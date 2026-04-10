@@ -33,6 +33,46 @@ $stmt->execute();
 $user_data = $stmt->get_result()->fetch_assoc();
 $user_id = $user_data['id'] ?? 0;
 
+// 🔥 HANDLER: Konfirmasi pesanan diterima (POST)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_received'])) {
+    $order_id = intval($_POST['order_id']);
+    
+    // Validasi keamanan: hanya owner & status tidak boleh completed/cancelled
+    $stmt_check = $conn->prepare("SELECT id FROM transactions WHERE id = ? AND user_id = ? AND status NOT IN ('completed', 'cancelled', 'selesai', 'batal', 'complete', 'cancel')");
+    $stmt_check->bind_param("ii", $order_id, $user_id);
+    $stmt_check->execute();
+    
+    if ($stmt_check->get_result()->num_rows > 0) {
+        $stmt_update = $conn->prepare("UPDATE transactions SET status = 'completed' WHERE id = ?");
+        $stmt_update->bind_param("i", $order_id);
+        $stmt_update->execute();
+    }
+    
+    // Redirect (PRG Pattern) agar form tidak ter-submit ulang saat refresh
+    header("Location: my_purchase.php?success_received=1");
+    exit();
+}
+
+// 🔥 HANDLER: Batalkan pesanan (POST)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cancel_order'])) {
+    $order_id = intval($_POST['order_id']);
+    
+    // Validasi keamanan: hanya owner & status tidak boleh completed/cancelled
+    $stmt_check = $conn->prepare("SELECT id FROM transactions WHERE id = ? AND user_id = ? AND status NOT IN ('completed', 'cancelled', 'selesai', 'batal', 'complete', 'cancel')");
+    $stmt_check->bind_param("ii", $order_id, $user_id);
+    $stmt_check->execute();
+    
+    if ($stmt_check->get_result()->num_rows > 0) {
+        $stmt_update = $conn->prepare("UPDATE transactions SET status = 'cancelled' WHERE id = ?");
+        $stmt_update->bind_param("i", $order_id);
+        $stmt_update->execute();
+    }
+    
+    // Redirect
+    header("Location: my_purchase.php?success_cancelled=1");
+    exit();
+}
+
 // Ambil semua transaksi user ini
 $transactions = [];
 if ($user_id > 0) {
@@ -53,43 +93,10 @@ if ($user_id > 0) {
     <title>Prashop - My Purchase</title>
     
     <link rel="stylesheet" href="../style.css">
+    <!-- Pastikan link CSS eksternal Anda sudah benar di sini -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=IM+FELL+French+Canon+SC&display=swap" rel="stylesheet">
     
-    <style>
-        .status-badge-trx.processing {
-            background: #fff3e0 !important;
-            color: #f57c00 !important;
-        }
-        .status-badge-trx.completed {
-            background: #e8f5e9 !important;
-            color: #388e3c !important;
-        }
-        .status-badge-trx.pending {
-            background: #fff3e0 !important;
-            color: #f57c00 !important;
-        }
-        .status-badge-trx.shipped {
-            background: #e3f2fd !important;
-            color: #1976d2 !important;
-        }
-        .status-badge-trx.cancelled {
-            background: #ffebee !important;
-            color: #d32f2f !important;
-        }
-        
-        .success-message {
-            background: #d4edda;
-            color: #155724;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border: 1px solid #c3e6cb;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-    </style>
 </head>
 <body class="home-body">
 
@@ -118,6 +125,20 @@ if ($user_id > 0) {
 
     <main class="content-container">
         <h1 class="page-title">My Purchase</h1>
+        
+        <?php if (isset($_GET['success_received'])): ?>
+            <div class="success-toast">
+                <i class="fas fa-check-circle"></i> 
+                Pesanan berhasil dikonfirmasi! Terima kasih telah berbelanja di Prashop 🙏
+            </div>
+        <?php endif; ?>
+
+        <?php if (isset($_GET['success_cancelled'])): ?>
+            <div class="success-toast" style="background-color: #e74c3c;">
+                <i class="fas fa-times-circle"></i> 
+                Pesanan berhasil dibatalkan.
+            </div>
+        <?php endif; ?>
         
         <?php if (isset($_GET['success'])): ?>
             <div class="success-message">
@@ -220,8 +241,32 @@ if ($user_id > 0) {
                         </div>
                         <?php endforeach; ?>
                         
-                        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee; text-align: right;">
-                            <strong>Grand Total: Rp <?php echo number_format($trx['total_amount'], 0, ',', '.'); ?></strong>
+                        <!-- Tombol Konfirmasi Pesanan -->
+                        <div class="order-actions" style="margin-top: 20px;">
+                            <?php if (in_array($status_class, ['pending', 'processing', 'shipped'])): ?>
+                                <form method="POST" style="display: inline;" 
+                                      onsubmit="return confirm('Apakah Anda yakin pesanan ini sudah diterima / selesai?');">
+                                    <input type="hidden" name="order_id" value="<?php echo $trx['id']; ?>">
+                                    <button type="submit" name="confirm_received" class="confirm-btn" style="background-color: #2ecc71; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; font-family: inherit;">
+                                        <i class="fas fa-check-circle"></i> Konfirmasi Selesai
+                                    </button>
+                                </form>
+                                <form method="POST" style="display: inline;" 
+                                      onsubmit="return confirm('Apakah Anda yakin ingin membatalkan pesanan ini?');">
+                                    <input type="hidden" name="order_id" value="<?php echo $trx['id']; ?>">
+                                    <button type="submit" name="cancel_order" class="confirm-btn" style="background-color: #e74c3c; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; margin-left: 10px; font-family: inherit;">
+                                        <i class="fas fa-times-circle"></i> Batalkan
+                                    </button>
+                                </form>
+                            <?php elseif ($status_class === 'completed'): ?>
+                                <span style="color: #388e3c; font-weight: 500; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fas fa-check-circle"></i> Diterima
+                                </span>
+                            <?php elseif ($status_class === 'cancelled'): ?>
+                                <span style="color: #e74c3c; font-weight: 500; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fas fa-times-circle"></i> Dibatalkan
+                                </span>
+                            <?php endif; ?>
                         </div>
                     </div>
                 <?php endforeach; ?>

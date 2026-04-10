@@ -16,6 +16,29 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
+// ✅ FUNGSI SMART PATH: Mencari lokasi gambar secara otomatis
+function getProductImagePath($imageName) {
+    // 1. Ambil nama file saja (buang 'uploads/' jika ada)
+    $filename = basename($imageName);
+    
+    // 2. Daftar kemungkinan lokasi (sesuai struktur project Anda)
+    $pathsToTry = [
+        '../asset/uploads/' . $filename,  // Lokasi standar dari management_product.php
+        '../asset/' . $filename,          // Lokasi jika langsung di asset
+        '../uploads/' . $filename,        // Lokasi jika di folder uploads root
+    ];
+    
+    // 3. Cek file mana yang benar-benar ada
+    foreach ($pathsToTry as $path) {
+        if (file_exists(__DIR__ . '/' . $path)) {
+            return $path;
+        }
+    }
+    
+    // 4. Fallback jika tidak ditemukan
+    return '../asset/nb530.png';
+}
+
 // Handle AJAX cart count
 if (isset($_POST['ajax_count'])) {
     $count = 0;
@@ -67,7 +90,6 @@ if ($banner_result && $banner_result->num_rows > 0) {
     }
 }
 
-// ✅ Ambil semua produk untuk grid
 // ✅ Ambil produk untuk grid (kecuali yang sudah di promotion/discount > 0)
 $sql = "SELECT * FROM products WHERE status = 'active' AND (discount = 0 OR discount IS NULL) ORDER BY id DESC";
 $result = $conn->query($sql);
@@ -133,10 +155,8 @@ if ($result && $result->num_rows > 0) {
             <?php 
             $index = 0;
             foreach ($banner_products as $bp): 
-                $imgPath = '../asset/' . $bp['image'];
-                if (!file_exists(__DIR__ . '/../asset/' . $bp['image'])) {
-                    $imgPath = '../asset/nb530.png';
-                }
+                // ✅ Gunakan fungsi Smart Path
+                $imgPath = getProductImagePath($bp['image']);
                 $discount = (int)($bp['discount'] ?? 0);
                 $original_price = $bp['price'];
                 $discounted_price = $original_price * (100 - $discount) / 100;
@@ -217,12 +237,12 @@ if ($result && $result->num_rows > 0) {
                         <input type="hidden" name="quantity" value="1">
                         <div class="product-img-holder">
                             <?php
-                            $imgPath = '../asset/' . $product['image'];
-                            if (!file_exists(__DIR__ . '/../asset/' . $product['image'])) {
-                                $imgPath = '../asset/nb530.png';
-                            }
+                            // ✅ Gunakan fungsi Smart Path
+                            $imgPath = getProductImagePath($product['image']);
                             ?>
-                            <img src="<?php echo $imgPath; ?>" alt="<?php echo htmlspecialchars($product['product_name']); ?>">
+                            <img src="<?php echo $imgPath; ?>" 
+                                 alt="<?php echo htmlspecialchars($product['product_name']); ?>"
+                                 onerror="this.src='../asset/nb530.png'">
                             <?php if (!empty($product['discount']) && $product['discount'] > 0): ?>
                                 <span class="discount-badge">-<?php echo $product['discount']; ?>%</span>
                             <?php endif; ?>
